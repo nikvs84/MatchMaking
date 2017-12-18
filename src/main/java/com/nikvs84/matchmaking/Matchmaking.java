@@ -10,6 +10,7 @@ public class Matchmaking {
     private final int rangeIncrease;
     private final long rangeIncreaseTime;
     private final long matchingTime;
+    private MatchQuery matchQuery;
 
     public Matchmaking(MatchmakingCallbacks callbacks, int partySize, int defaultRange, int rangeIncrease, long rangeIncreaseTime, long matchingTime) {
         this.callbacks = callbacks;
@@ -56,9 +57,19 @@ public class Matchmaking {
         return matchingTime;
     }
 
-    public void addRequest(Player player) { /* … */ }
+    public void setMatchQuery(MatchQuery matchQuery) {
+        this.matchQuery = matchQuery;
+        this.matchQuery.setPartySize(this.partySize);
+    }
 
-    public void cancelRequest(Player player) { /* … */ }
+    public void addRequest(Player player) {
+        matchQuery.addRequest(player);
+
+    }
+
+    public void cancelRequest(Player player) {
+        callbacks.onCancel(player);
+    }
 
     /**
      * Если время абсолютное (согласно ТЗ), то параметр &quot;time&quot; будет <em>long</em>, а не <em>int</em>.
