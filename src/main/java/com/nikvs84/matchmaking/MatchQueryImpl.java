@@ -7,7 +7,11 @@ import java.util.*;
 
 public class MatchQueryImpl implements MatchQuery {
 
-//    public static final int LOAD_FACTOR = 1;
+    public static final String TABLE_NAME = "query";
+    public static final String FIELD_ID = "id";
+    public static final String FIELD_POWER = "power";
+    public static final String FIELD_RANGE = "range";
+    //    public static final int LOAD_FACTOR = 1;
 //    private Map<Player, Integer> waitingMap;
     private int partySize;
     private int defaultRange;
@@ -50,18 +54,18 @@ public class MatchQueryImpl implements MatchQuery {
     }
 
     private void initTables(Connection connection) throws SQLException {
-        String sql = "CREATE TABLE IF NOT EXISTS query( " +
-                " id INT NOT NULL, " +
-                " power INT NOT NULL, " +
-                " range INT NOT NULL, " +
-                " PRIMARY KEY (id) " +
+        String sql = "CREATE TABLE IF NOT EXISTS " + TABLE_NAME + "( " +
+                " " + FIELD_ID + " INT NOT NULL, " +
+                " " + FIELD_POWER + " INT NOT NULL, " +
+                " " + FIELD_RANGE + " INT NOT NULL, " +
+                " PRIMARY KEY (" + FIELD_ID + ") " +
                 " )";
         Statement stmt = connection.createStatement();
         stmt.execute(sql);
     }
 
     private void insertPlayer(Connection connection, Player player, int defaultRange) throws SQLException {
-        String sql = "INSERT INTO query " +
+        String sql = "INSERT INTO " + TABLE_NAME + " " +
                 " VALUES " +
                 " (?, ?, ?)";
         PreparedStatement stmt = connection.prepareStatement(sql);
@@ -71,9 +75,32 @@ public class MatchQueryImpl implements MatchQuery {
     }
 
     private void updateRange(Connection connection, int rangeIncrease) throws SQLException {
-        String sql = "";
+        String sql = "UPDATE " + TABLE_NAME + " AS Q SET " +
+                FIELD_RANGE + " = (SELECT MIN(" + FIELD_RANGE +
+                ") FROM " + TABLE_NAME + " AS IQ " +
+                " WHERE IQ." + FIELD_ID + " = Q." + FIELD_ID + ") + 1";
         PreparedStatement stmt = connection.prepareStatement(sql);
+        stmt.setInt(1, rangeIncrease);
+    }
 
+    private Player fetchPlayer(ResultSet rs) throws SQLException {
+        int id = rs.getInt(FIELD_ID);
+        int power = rs.getInt(FIELD_POWER);
+        Player result = new Player(id, power);
+        return result;
+    }
+
+    private List<Player> getPlayersFromDB(Connection connection) throws SQLException {
+        List<Player> result = new ArrayList<>();
+        String sql = "SELECT " + FIELD_ID + ", " + FIELD_POWER + " FROM " + TABLE_NAME;
+        PreparedStatement stmt = connection.prepareStatement(sql);
+        ResultSet rs = stmt.executeQuery();
+
+        while (rs.next()) {
+            result.add(fetchPlayer(rs));
+        }
+
+        return result;
     }
 
 }
