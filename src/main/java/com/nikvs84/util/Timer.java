@@ -49,7 +49,7 @@ public class Timer implements Runnable {
                 e.printStackTrace();
             }
             synchronized (matchQuery) {
-                this.matchQuery.increasePowerRange(rangeIncrease);
+                this.matchQuery.increaseRange();
             }
         }
     }

@@ -4,9 +4,13 @@ import com.nikvs84.entity.Player;
 
 public interface MatchQuery {
 
-    Player[] addRequest(Player player);
+    boolean addRequest(Player player);
 
-    void increasePowerRange(int rangeIncrease);
+    void increaseRange();
+
+    Player[] getParty();
 
     void initQuery(int partySize, int defaultRange, int rangeIncrease);
+
+    void initQuery(Matchmaking matchmaking);
 }

@@ -59,12 +59,10 @@ public class Matchmaking {
 
     public void setMatchQuery(MatchQuery matchQuery) {
         this.matchQuery = matchQuery;
-        this.matchQuery.setPartySize(this.partySize);
     }
 
     public void addRequest(Player player) {
         matchQuery.addRequest(player);
-
     }
 
     public void cancelRequest(Player player) {
@@ -72,10 +70,15 @@ public class Matchmaking {
     }
 
     /**
-     * Если время абсолютное (согласно ТЗ), то параметр &quot;time&quot; будет <em>long</em>, а не <em>int</em>.
+     * Если время абсолютное (согласно ТЗ), то параметр <em>time</em> будет <em>long</em>, а не <em>int</em>.
      * @param time время последнего обновления.
      */
     public void update(long time) {
         this.lastUpdateTime = time;
+        Player[] players = this.matchQuery.getParty();
+
+        if (players != null) {
+            callbacks.onMatched(players);
+        }
     }
 }

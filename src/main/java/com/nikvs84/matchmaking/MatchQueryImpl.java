@@ -12,36 +12,71 @@ public class MatchQueryImpl implements MatchQuery {
     public static final String FIELD_POWER = "power";
     public static final String FIELD_RANGE = "range";
     public static final String FIELD_TIME = "time";
-    //    public static final int LOAD_FACTOR = 1;
-//    private Map<Player, Integer> waitingMap;
+
+    private Matchmaking matchmaking;
     private int partySize;
     private int defaultRange;
     private int rangeIncrease;
 
+    @Override
     public void initQuery(int partySize, int defaultRange, int rangeIncrease) {
         this.partySize = partySize;
-//        this.waitingMap = new HashMap<Player, Integer>(partySize * LOAD_FACTOR);
         this.defaultRange = defaultRange;
         this.rangeIncrease = rangeIncrease;
     }
 
-    public Player[] addRequest(Player player) {
-        Player[] result = null;
-//        if (waitingMap.size() + 1 < partySize) {
-//            waitingMap.put(player, defaultRange);
-//            result = (Player[]) getMatchList().toArray();
-//        }
+    @Override
+    public void initQuery(Matchmaking matchmaking) {
+        this.matchmaking = matchmaking;
+    }
+
+    @Override
+    public boolean addRequest(Player player) {
+        boolean result = false;
+
+        try (Connection connection = getDBConnection()) {
+            result = !isPlayerInQuery(connection, player);
+            if (result) {
+                insertPlayer(connection, player, this.defaultRange);
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+
         return result;
     }
 
-    public void increasePowerRange(int rangeIncrease) {
-//        for (Map.Entry<Player, Integer> entry : this.waitingMap.entrySet()) {
-//            this.waitingMap.put(entry.getKey(), entry.getValue() + rangeIncrease);
-//        }
+    @Override
+    public void increaseRange() {
+        try (Connection connection = getDBConnection()) {
+            updateRange(connection, this.rangeIncrease);
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
     }
 
-    private List<Player> getMatchList() {
-        List<Player> result = new ArrayList<Player>();
+    private List<Player> getMatchList(Connection connection) throws SQLException {
+        List<Player> result = null;
+        List<Player> players = getPlayersFromDB(connection);
+        for (int i = 0; i < players.size() - 1; i++) {
+            Player p = players.get(i);
+            if (findParticipantsCount(connection, p.id) >= this.partySize) {
+                result = getPartyForId(connection, p.id, this.partySize);
+                break;
+            }
+        }
+
+        return result;
+    }
+
+    @Override
+    public Player[] getParty() {
+        Player[] result = null;
+        try (Connection connection = getDBConnection()) {
+            result = (Player[]) getMatchList(connection).toArray();
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
 
         return result;
     }
@@ -66,7 +101,20 @@ public class MatchQueryImpl implements MatchQuery {
         stmt.execute(sql);
     }
 
+    private boolean isPlayerInQuery(Connection connection, Player player) throws SQLException {
+        boolean result = false;
+        String sql = "SELECT * FROM " + TABLE_NAME + " WHERE " + FIELD_ID + " = ?";
+        PreparedStatement stmt = connection.prepareStatement(sql);
+        stmt.setInt(1, player.id);
+        ResultSet rs = stmt.executeQuery();
+        rs.last();
+        result = (rs.getRow() > 0);
+
+        return result;
+    }
+
     private void insertPlayer(Connection connection, Player player, int defaultRange) throws SQLException {
+
         String sql = "INSERT INTO " + TABLE_NAME + " " +
                 " VALUES " +
                 " (?, ?, ?, CURRENT_TIMESTAMP())";
@@ -107,6 +155,29 @@ public class MatchQueryImpl implements MatchQuery {
 
     private List<Player> getPartyForId(Connection connection, int id, int partySize) throws SQLException {
         List<Player> result = new ArrayList<>();
+
+        String sql = "SELECT " + FIELD_ID + ", " + FIELD_POWER + " FROM " + TABLE_NAME + " AS Q WHERE " +
+                "Q." + FIELD_POWER + " >= " +
+                "(SELECT MIN(" + FIELD_POWER + " - " + FIELD_RANGE + ") FROM " + TABLE_NAME + " AS IQ WHERE IQ." + FIELD_ID + " = ? ORDER BY " + FIELD_TIME + ") " +
+                "AND Q." + FIELD_POWER + " <= " +
+                "(SELECT MIN(" + FIELD_POWER + " + " + FIELD_RANGE + ") FROM " + TABLE_NAME + " AS IQ WHERE IQ." + FIELD_ID + " = ? ORDER BY " + FIELD_TIME + ")";
+
+        PreparedStatement stmt = connection.prepareStatement(sql);
+        stmt.setInt(1, id);
+        stmt.setInt(2, id);
+        ResultSet rs = stmt.executeQuery();
+
+        while (rs.next()) {
+            result.add(fetchPlayer(rs));
+            if (result.size() >= partySize) {
+                break;
+            }
+        }
+
+        return result;
+    }
+
+    private int findParticipantsCount(Connection connection, int id) throws SQLException {
         String sql = "SELECT COUNT(*) FROM " + TABLE_NAME + " AS Q WHERE " +
                 "Q." + FIELD_POWER + " >= " +
                 "(SELECT MIN(" + FIELD_POWER + " - " + FIELD_RANGE + ") FROM " + TABLE_NAME + " AS IQ WHERE IQ." + FIELD_ID + " = ?) " +
@@ -118,29 +189,7 @@ public class MatchQueryImpl implements MatchQuery {
         stmt.setInt(2, id);
         ResultSet rs = stmt.executeQuery();
         rs.last();
-        long count = rs.getRow();
-
-        if (count >= partySize) {
-            sql = "SELECT " + FIELD_ID + ", " + FIELD_POWER + " FROM " + TABLE_NAME + " AS Q WHERE " +
-                    "Q." + FIELD_POWER + " >= " +
-                    "(SELECT MIN(" + FIELD_POWER + " - " + FIELD_RANGE + ") FROM " + TABLE_NAME + " AS IQ WHERE IQ." + FIELD_ID + " = ? ORDER BY " + FIELD_TIME + ") " +
-                    "AND Q." + FIELD_POWER + " <= " +
-                    "(SELECT MIN(" + FIELD_POWER + " + " + FIELD_RANGE + ") FROM " + TABLE_NAME + " AS IQ WHERE IQ." + FIELD_ID + " = ? ORDER BY " + FIELD_TIME + ")";
-
-            stmt = connection.prepareStatement(sql);
-            stmt.setInt(1, id);
-            stmt.setInt(2, id);
-            rs = stmt.executeQuery();
-
-            while (rs.next()) {
-                result.add(fetchPlayer(rs));
-                if (result.size() >= partySize) {
-                    break;
-                }
-            }
-        }
-
-        return result;
+        return rs.getRow();
     }
 
 }
