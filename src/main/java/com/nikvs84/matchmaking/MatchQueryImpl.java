@@ -11,6 +11,7 @@ public class MatchQueryImpl implements MatchQuery {
     public static final String FIELD_ID = "id";
     public static final String FIELD_POWER = "power";
     public static final String FIELD_RANGE = "range";
+    public static final String FIELD_TIME = "time";
     //    public static final int LOAD_FACTOR = 1;
 //    private Map<Player, Integer> waitingMap;
     private int partySize;
@@ -58,6 +59,7 @@ public class MatchQueryImpl implements MatchQuery {
                 " " + FIELD_ID + " INT NOT NULL, " +
                 " " + FIELD_POWER + " INT NOT NULL, " +
                 " " + FIELD_RANGE + " INT NOT NULL, " +
+                " " + FIELD_TIME + "    TIMESTAMP NOT NULL " +
                 " PRIMARY KEY (" + FIELD_ID + ") " +
                 " )";
         Statement stmt = connection.createStatement();
@@ -67,7 +69,7 @@ public class MatchQueryImpl implements MatchQuery {
     private void insertPlayer(Connection connection, Player player, int defaultRange) throws SQLException {
         String sql = "INSERT INTO " + TABLE_NAME + " " +
                 " VALUES " +
-                " (?, ?, ?)";
+                " (?, ?, ?, CURRENT_TIMESTAMP())";
         PreparedStatement stmt = connection.prepareStatement(sql);
         stmt.setLong(1, player.id);
         stmt.setInt(2, player.power);
@@ -92,12 +94,50 @@ public class MatchQueryImpl implements MatchQuery {
 
     private List<Player> getPlayersFromDB(Connection connection) throws SQLException {
         List<Player> result = new ArrayList<>();
-        String sql = "SELECT " + FIELD_ID + ", " + FIELD_POWER + " FROM " + TABLE_NAME;
+        String sql = "SELECT " + FIELD_ID + ", " + FIELD_POWER + " FROM " + TABLE_NAME + " ORDER BY " + FIELD_TIME;
         PreparedStatement stmt = connection.prepareStatement(sql);
         ResultSet rs = stmt.executeQuery();
 
         while (rs.next()) {
             result.add(fetchPlayer(rs));
+        }
+
+        return result;
+    }
+
+    private List<Player> getPartyForId(Connection connection, int id, int partySize) throws SQLException {
+        List<Player> result = new ArrayList<>();
+        String sql = "SELECT COUNT(*) FROM " + TABLE_NAME + " AS Q WHERE " +
+                "Q." + FIELD_POWER + " >= " +
+                "(SELECT MIN(" + FIELD_POWER + " - " + FIELD_RANGE + ") FROM " + TABLE_NAME + " AS IQ WHERE IQ." + FIELD_ID + " = ?) " +
+                "AND Q." + FIELD_POWER + " <= " +
+                "(SELECT MIN(" + FIELD_POWER + " + " + FIELD_RANGE + ") FROM " + TABLE_NAME + " AS IQ WHERE IQ." + FIELD_ID + " = ?)";
+
+        PreparedStatement stmt = connection.prepareStatement(sql);
+        stmt.setInt(1, id);
+        stmt.setInt(2, id);
+        ResultSet rs = stmt.executeQuery();
+        rs.last();
+        long count = rs.getRow();
+
+        if (count >= partySize) {
+            sql = "SELECT " + FIELD_ID + ", " + FIELD_POWER + " FROM " + TABLE_NAME + " AS Q WHERE " +
+                    "Q." + FIELD_POWER + " >= " +
+                    "(SELECT MIN(" + FIELD_POWER + " - " + FIELD_RANGE + ") FROM " + TABLE_NAME + " AS IQ WHERE IQ." + FIELD_ID + " = ? ORDER BY " + FIELD_TIME + ") " +
+                    "AND Q." + FIELD_POWER + " <= " +
+                    "(SELECT MIN(" + FIELD_POWER + " + " + FIELD_RANGE + ") FROM " + TABLE_NAME + " AS IQ WHERE IQ." + FIELD_ID + " = ? ORDER BY " + FIELD_TIME + ")";
+
+            stmt = connection.prepareStatement(sql);
+            stmt.setInt(1, id);
+            stmt.setInt(2, id);
+            rs = stmt.executeQuery();
+
+            while (rs.next()) {
+                result.add(fetchPlayer(rs));
+                if (result.size() >= partySize) {
+                    break;
+                }
+            }
         }
 
         return result;
