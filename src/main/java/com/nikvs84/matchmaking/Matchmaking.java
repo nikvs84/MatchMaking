@@ -2,6 +2,8 @@ package com.nikvs84.matchmaking;
 
 import com.nikvs84.entity.Player;
 
+import java.util.List;
+
 public class Matchmaking {
     private MatchmakingCallbacks callbacks;
     private long lastUpdateTime;
@@ -62,11 +64,14 @@ public class Matchmaking {
     }
 
     public void addRequest(Player player) {
-        matchQuery.addRequest(player);
+        boolean isNotCandelled = matchQuery.addRequest(player);
+        if (!isNotCandelled) {
+            onCancel(player);
+        }
     }
 
     public void cancelRequest(Player player) {
-        callbacks.onCancel(player);
+        onCancel(player);
     }
 
     /**
@@ -77,8 +82,14 @@ public class Matchmaking {
         this.lastUpdateTime = time;
         Player[] players = this.matchQuery.getParty();
 
-        if (players != null) {
+        if (players.length == partySize) {
             callbacks.onMatched(players);
         }
+
+        List<Player> outsiders = matchQuery.getOutsiders();
+    }
+
+    public void onCancel(Player player) {
+        callbacks.onCancel(player);
     }
 }

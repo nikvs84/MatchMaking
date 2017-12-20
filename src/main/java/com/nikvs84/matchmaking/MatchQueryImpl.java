@@ -4,6 +4,7 @@ import com.nikvs84.entity.Player;
 
 import java.sql.*;
 import java.util.*;
+import java.util.Date;
 
 public class MatchQueryImpl implements MatchQuery {
 
@@ -17,12 +18,14 @@ public class MatchQueryImpl implements MatchQuery {
     private int partySize;
     private int defaultRange;
     private int rangeIncrease;
+    private long matchingTime;
 
     @Override
-    public void initQuery(int partySize, int defaultRange, int rangeIncrease) {
+    public void initQuery(int partySize, int defaultRange, int rangeIncrease, long matchingTime) {
         this.partySize = partySize;
         this.defaultRange = defaultRange;
         this.rangeIncrease = rangeIncrease;
+        this.matchingTime = matchingTime;
     }
 
     @Override
@@ -56,7 +59,7 @@ public class MatchQueryImpl implements MatchQuery {
     }
 
     private List<Player> getMatchList(Connection connection) throws SQLException {
-        List<Player> result = null;
+        List<Player> result = new ArrayList<>();
         List<Player> players = getPlayersFromDB(connection);
         for (int i = 0; i < players.size() - 1; i++) {
             Player p = players.get(i);
@@ -190,6 +193,24 @@ public class MatchQueryImpl implements MatchQuery {
         ResultSet rs = stmt.executeQuery();
         rs.last();
         return rs.getRow();
+    }
+
+    @Override
+    public List<Player> getOutsiders() {
+        List<Player> result = new ArrayList<>();
+        String sql = "SELECT " + FIELD_ID + ", " + FIELD_POWER + " FROM " + TABLE_NAME +
+                " WHERE DATEDIFF('MILLISECOND', CURRENT_TIMESTAMP(), " + FIELD_TIME + ") > ?";
+        try (Connection connection = getDBConnection()) {
+            PreparedStatement stmt = connection.prepareStatement(sql);
+            stmt.setLong(1, matchingTime);
+            ResultSet rs = stmt.executeQuery();
+            while (rs.next()) {
+                result.add(fetchPlayer(rs));
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return result;
     }
 
 }
