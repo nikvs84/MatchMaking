@@ -4,7 +4,6 @@ import com.nikvs84.entity.Player;
 
 import java.sql.*;
 import java.util.*;
-import java.util.Date;
 
 public class MatchQueryImpl implements MatchQuery {
 
@@ -13,6 +12,8 @@ public class MatchQueryImpl implements MatchQuery {
     public static final String FIELD_POWER = "power";
     public static final String FIELD_RANGE = "range";
     public static final String FIELD_TIME = "time";
+    public static final String FIELD_DELETED = "deleted";
+    public static final String FIELD_SELECTED = "selected";
 
     private Matchmaking matchmaking;
     private int partySize;
@@ -31,6 +32,10 @@ public class MatchQueryImpl implements MatchQuery {
     @Override
     public void initQuery(Matchmaking matchmaking) {
         this.matchmaking = matchmaking;
+        this.partySize = matchmaking.getPartySize();
+        this.defaultRange = matchmaking.getDefaultRange();
+        this.rangeIncrease = matchmaking.getRangeIncrease();
+        this.matchingTime = matchmaking.getMatchingTime();
     }
 
     @Override
@@ -58,27 +63,42 @@ public class MatchQueryImpl implements MatchQuery {
         }
     }
 
-    private List<Player> getMatchList(Connection connection) throws SQLException {
-        List<Player> result = new ArrayList<>();
-        List<Player> players = getPlayersFromDB(connection);
-        for (int i = 0; i < players.size() - 1; i++) {
-            Player p = players.get(i);
-            if (findParticipantsCount(connection, p.id) >= this.partySize) {
-                result = getPartyForId(connection, p.id, this.partySize);
-                break;
-            }
+    @Override
+    public List<Player[]> getParties() {
+        List<Player[]> result = null;
+        try (Connection connection = getDBConnection()) {
+            result = getPartiesList(connection);
+        } catch (SQLException e) {
+            e.printStackTrace();
         }
 
         return result;
     }
 
+
     @Override
-    public Player[] getParty() {
-        Player[] result = null;
+    public Player[] getOutsiders() {
+        List<Player> result = null;
         try (Connection connection = getDBConnection()) {
-            result = (Player[]) getMatchList(connection).toArray();
+            makrOutsiders(connection);
+            result = fetchOutsiders(connection);
+            deleteOutsiders(connection);
         } catch (SQLException e) {
             e.printStackTrace();
+        }
+        return (Player[]) result.toArray();
+    }
+
+    private List<Player[]> getPartiesList(Connection connection) throws SQLException {
+        List<Player[]> result = new ArrayList<>();
+        List<Player> players = getPlayersFromDB(connection);
+        for (int i = 0; i < players.size() - 1; i++) {
+            Player p = players.get(i);
+            if (getParticipantsCount(connection, p.id) >= this.partySize) {
+                markSelectedPlayers(connection, p.id);
+                Player[] party = (Player[]) getPartyForId(connection, p.id, this.partySize).toArray();
+                result.add(party);
+            }
         }
 
         return result;
@@ -98,6 +118,8 @@ public class MatchQueryImpl implements MatchQuery {
                 " " + FIELD_POWER + " INT NOT NULL, " +
                 " " + FIELD_RANGE + " INT NOT NULL, " +
                 " " + FIELD_TIME + "    TIMESTAMP NOT NULL " +
+                " " + FIELD_DELETED + " BOOLEAN NOT NULL DEFAULT FALSE," +
+                " " + FIELD_SELECTED + " BOOLEAN NOT NULL DEFAULT FALSE," +
                 " PRIMARY KEY (" + FIELD_ID + ") " +
                 " )";
         Statement stmt = connection.createStatement();
@@ -116,7 +138,7 @@ public class MatchQueryImpl implements MatchQuery {
         return result;
     }
 
-    private void insertPlayer(Connection connection, Player player, int defaultRange) throws SQLException {
+    private int insertPlayer(Connection connection, Player player, int defaultRange) throws SQLException {
 
         String sql = "INSERT INTO " + TABLE_NAME + " " +
                 " VALUES " +
@@ -125,6 +147,7 @@ public class MatchQueryImpl implements MatchQuery {
         stmt.setLong(1, player.id);
         stmt.setInt(2, player.power);
         stmt.setInt(3, defaultRange);
+        return stmt.executeUpdate();
     }
 
     private void updateRange(Connection connection, int rangeIncrease) throws SQLException {
@@ -157,30 +180,51 @@ public class MatchQueryImpl implements MatchQuery {
     }
 
     private List<Player> getPartyForId(Connection connection, int id, int partySize) throws SQLException {
-        List<Player> result = new ArrayList<>();
+        markSelectedPlayers(connection, id);
+        List<Player> result = getSelectedPlayers(connection);
+        deleteSelectedPlayers(connection);
 
-        String sql = "SELECT " + FIELD_ID + ", " + FIELD_POWER + " FROM " + TABLE_NAME + " AS Q WHERE " +
-                "Q." + FIELD_POWER + " >= " +
+        return result;
+    }
+
+    private int markSelectedPlayers(Connection connection, int id) throws SQLException {
+        String sql = "UPDATE " + TABLE_NAME + " AS Q SET " + FIELD_SELECTED + " = TRUE " +
+                " WHERE Q." + FIELD_POWER + " >= " +
                 "(SELECT MIN(" + FIELD_POWER + " - " + FIELD_RANGE + ") FROM " + TABLE_NAME + " AS IQ WHERE IQ." + FIELD_ID + " = ? ORDER BY " + FIELD_TIME + ") " +
                 "AND Q." + FIELD_POWER + " <= " +
-                "(SELECT MIN(" + FIELD_POWER + " + " + FIELD_RANGE + ") FROM " + TABLE_NAME + " AS IQ WHERE IQ." + FIELD_ID + " = ? ORDER BY " + FIELD_TIME + ")";
-
+                "(SELECT MIN(" + FIELD_POWER + " + " + FIELD_RANGE + ") FROM " + TABLE_NAME + " AS IQ WHERE IQ." + FIELD_ID + " = ? ORDER BY " + FIELD_TIME + ") " +
+                " ORDER BY " + FIELD_TIME + " LIMIT ?";
         PreparedStatement stmt = connection.prepareStatement(sql);
         stmt.setInt(1, id);
         stmt.setInt(2, id);
+        stmt.setInt(3, partySize);
+
+        return stmt.executeUpdate();
+    }
+
+    private List<Player> getSelectedPlayers(Connection connection) throws SQLException {
+        List<Player> result = new ArrayList<>();
+        String sql = "";
+        PreparedStatement stmt = connection.prepareStatement(sql);
+        stmt.setBoolean(1, true);
         ResultSet rs = stmt.executeQuery();
 
         while (rs.next()) {
             result.add(fetchPlayer(rs));
-            if (result.size() >= partySize) {
-                break;
-            }
         }
 
         return result;
     }
 
-    private int findParticipantsCount(Connection connection, int id) throws SQLException {
+    private int deleteSelectedPlayers(Connection connection) throws SQLException {
+        String sql = "DELETE FROM " + TABLE_NAME + " WHERE " + FIELD_SELECTED + " = ?";
+        PreparedStatement stmt = connection.prepareStatement(sql);
+        stmt.setBoolean(1, true);
+
+        return stmt.executeUpdate();
+    }
+
+    private int getParticipantsCount(Connection connection, int id) throws SQLException {
         String sql = "SELECT COUNT(*) FROM " + TABLE_NAME + " AS Q WHERE " +
                 "Q." + FIELD_POWER + " >= " +
                 "(SELECT MIN(" + FIELD_POWER + " - " + FIELD_RANGE + ") FROM " + TABLE_NAME + " AS IQ WHERE IQ." + FIELD_ID + " = ?) " +
@@ -195,22 +239,33 @@ public class MatchQueryImpl implements MatchQuery {
         return rs.getRow();
     }
 
-    @Override
-    public List<Player> getOutsiders() {
+    private int makrOutsiders(Connection connection) throws SQLException {
+        String sql = "UPDATE " + TABLE_NAME + " SET " + FIELD_DELETED + " = TRUE " +
+                " WHERE DATEDIFF('MILLISECOND', " + FIELD_TIME + ", CURRENT_TIMESTAMP()) > ?";
+        PreparedStatement stmt = connection.prepareStatement(sql);
+        stmt.setLong(1, matchingTime);
+        return stmt.executeUpdate();
+    }
+
+    private List<Player> fetchOutsiders(Connection connection) throws SQLException {
         List<Player> result = new ArrayList<>();
         String sql = "SELECT " + FIELD_ID + ", " + FIELD_POWER + " FROM " + TABLE_NAME +
-                " WHERE DATEDIFF('MILLISECOND', CURRENT_TIMESTAMP(), " + FIELD_TIME + ") > ?";
-        try (Connection connection = getDBConnection()) {
-            PreparedStatement stmt = connection.prepareStatement(sql);
-            stmt.setLong(1, matchingTime);
-            ResultSet rs = stmt.executeQuery();
-            while (rs.next()) {
-                result.add(fetchPlayer(rs));
-            }
-        } catch (SQLException e) {
-            e.printStackTrace();
+                " WHERE " + FIELD_DELETED + " = ?";
+        PreparedStatement stmt = connection.prepareStatement(sql);
+        stmt.setBoolean(1, true);
+        ResultSet rs = stmt.executeQuery();
+        while (rs.next()) {
+            result.add(fetchPlayer(rs));
         }
+
         return result;
+    }
+
+    private boolean deleteOutsiders(Connection connection) throws SQLException {
+        String sql = "DELETE FROM " + TABLE_NAME + " WHERE " + FIELD_DELETED + " = ?";
+        PreparedStatement stmt = connection.prepareStatement(sql);
+        stmt.setBoolean(1, true);
+        return stmt.execute();
     }
 
 }

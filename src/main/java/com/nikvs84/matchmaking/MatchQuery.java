@@ -10,11 +10,11 @@ public interface MatchQuery {
 
     void increaseRange();
 
-    Player[] getParty();
+    List<Player[]> getParties();
 
     void initQuery(int partySize, int defaultRange, int rangeIncrease, long matchingTime);
 
     void initQuery(Matchmaking matchmaking);
 
-    List<Player> getOutsiders();
+    Player[] getOutsiders();
 }

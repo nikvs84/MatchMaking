@@ -23,6 +23,7 @@ public class Matchmaking {
         this.matchingTime = matchingTime;
     }
 
+//  Gettets and Setters
     public MatchmakingCallbacks getCallbacks() {
         return callbacks;
     }
@@ -63,6 +64,7 @@ public class Matchmaking {
         this.matchQuery = matchQuery;
     }
 
+//  Functional
     public void addRequest(Player player) {
         boolean isNotCandelled = matchQuery.addRequest(player);
         if (!isNotCandelled) {
@@ -80,13 +82,16 @@ public class Matchmaking {
      */
     public void update(long time) {
         this.lastUpdateTime = time;
-        Player[] players = this.matchQuery.getParty();
+        List<Player[]> parties = this.matchQuery.getParties();
 
-        if (players.length == partySize) {
+        for (Player[] players: parties) {
             callbacks.onMatched(players);
         }
 
-        List<Player> outsiders = matchQuery.getOutsiders();
+        Player[] outsiders = matchQuery.getOutsiders();
+        for (Player player : outsiders) {
+            onCancel(player);
+        }
     }
 
     public void onCancel(Player player) {

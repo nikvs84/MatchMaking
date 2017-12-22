@@ -5,14 +5,11 @@ import com.nikvs84.matchmaking.MatchQuery;
 public class Timer implements Runnable {
     private MatchQuery matchQuery;
     private long rangeIncreaseTime;
-    private int rangeIncrease;
-
     private boolean isRunning;
 
-    public Timer(MatchQuery matchQuery, long rangeIncreaseTime, int rangeIncrease) {
+    public Timer(MatchQuery matchQuery, long rangeIncreaseTime) {
         this.matchQuery = matchQuery;
         this.rangeIncreaseTime = rangeIncreaseTime;
-        this.rangeIncrease = rangeIncrease;
         this.isRunning = true;
         Thread.currentThread().setDaemon(true);
     }
@@ -33,13 +30,6 @@ public class Timer implements Runnable {
         this.rangeIncreaseTime = rangeIncreaseTime;
     }
 
-    public int getRangeIncrease() {
-        return rangeIncrease;
-    }
-
-    public void setRangeIncrease(int rangeIncrease) {
-        this.rangeIncrease = rangeIncrease;
-    }
 
     public void run() {
         while (isRunning) {
