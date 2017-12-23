@@ -21,6 +21,8 @@ public class Matchmaking {
         this.rangeIncrease = rangeIncrease;
         this.rangeIncreaseTime = rangeIncreaseTime;
         this.matchingTime = matchingTime;
+        this.matchQuery = new MatchQueryImpl();
+        this.matchQuery.initQuery(this);
     }
 
 //  Gettets and Setters
@@ -60,6 +62,10 @@ public class Matchmaking {
         return matchingTime;
     }
 
+    public MatchQuery getMatchQuery() {
+        return matchQuery;
+    }
+
     public void setMatchQuery(MatchQuery matchQuery) {
         this.matchQuery = matchQuery;
     }
@@ -82,6 +88,7 @@ public class Matchmaking {
      */
     public void update(long time) {
         this.lastUpdateTime = time;
+        this.matchQuery.setLastUpdateTime(lastUpdateTime);
         List<Player[]> parties = this.matchQuery.getParties();
 
         for (Player[] players: parties) {

@@ -20,6 +20,29 @@ public class MatchQueryImpl implements MatchQuery {
     private int defaultRange;
     private int rangeIncrease;
     private long matchingTime;
+    private long lastUpdateTime;
+    private Connection connection;
+
+    public Connection getConnection() throws SQLException {
+        if (this.connection != null && !this.connection.isClosed()) {
+            return this.connection;
+        } else {
+            return getDBConnection();
+        }
+    }
+
+    public void setConnection(Connection connection) {
+        this.connection = connection;
+    }
+
+    public long getLastUpdateTime() {
+        return lastUpdateTime;
+    }
+
+    @Override
+    public void setLastUpdateTime(long lastUpdateTime) {
+        this.lastUpdateTime = lastUpdateTime;
+    }
 
     @Override
     public void initQuery(int partySize, int defaultRange, int rangeIncrease, long matchingTime) {
@@ -36,6 +59,16 @@ public class MatchQueryImpl implements MatchQuery {
         this.defaultRange = matchmaking.getDefaultRange();
         this.rangeIncrease = matchmaking.getRangeIncrease();
         this.matchingTime = matchmaking.getMatchingTime();
+        try {
+            Class.forName("org.h2.Driver");
+            try (Connection connection = getDBConnection()) {
+                initTables(connection);
+            } catch (SQLException e) {
+                e.printStackTrace();
+            }
+        } catch (ClassNotFoundException e) {
+            e.printStackTrace();
+        }
     }
 
     @Override
@@ -56,6 +89,7 @@ public class MatchQueryImpl implements MatchQuery {
 
     @Override
     public void increaseRange() {
+        System.out.println("Query: increase power range");
         try (Connection connection = getDBConnection()) {
             updateRange(connection, this.rangeIncrease);
         } catch (SQLException e) {
@@ -86,7 +120,19 @@ public class MatchQueryImpl implements MatchQuery {
         } catch (SQLException e) {
             e.printStackTrace();
         }
-        return (Player[]) result.toArray();
+        return result.toArray(new Player[result.size()]);
+    }
+
+    @Override
+    public List<Player> getAllPlayers() {
+        List<Player> result = null;
+        try (Connection connection = getDBConnection()) {
+            result = getPlayersFromDB(connection);
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+
+        return result;
     }
 
     private List<Player[]> getPartiesList(Connection connection) throws SQLException {
@@ -96,7 +142,8 @@ public class MatchQueryImpl implements MatchQuery {
             Player p = players.get(i);
             if (getParticipantsCount(connection, p.id) >= this.partySize) {
                 markSelectedPlayers(connection, p.id);
-                Player[] party = (Player[]) getPartyForId(connection, p.id, this.partySize).toArray();
+                List<Player> partyForId = getPartyForId(connection, p.id, this.partySize);
+                Player[] party = partyForId.toArray(new Player[partyForId.size()]);
                 result.add(party);
             }
         }
@@ -105,11 +152,11 @@ public class MatchQueryImpl implements MatchQuery {
     }
 
     private Connection getDBConnection(String dbName) throws SQLException {
-        return DriverManager.getConnection("jdbc:h2:mem:" + dbName);
+        return DriverManager.getConnection("jdbc:h2:tcp://localhost/" + dbName);
     }
 
     private Connection getDBConnection() throws SQLException {
-        return getDBConnection("");
+        return getDBConnection("~/matchmaking");
     }
 
     private void initTables(Connection connection) throws SQLException {
@@ -117,13 +164,13 @@ public class MatchQueryImpl implements MatchQuery {
                 " " + FIELD_ID + " INT NOT NULL, " +
                 " " + FIELD_POWER + " INT NOT NULL, " +
                 " " + FIELD_RANGE + " INT NOT NULL, " +
-                " " + FIELD_TIME + "    TIMESTAMP NOT NULL " +
+                " " + FIELD_TIME + "    TIMESTAMP NOT NULL, " +
                 " " + FIELD_DELETED + " BOOLEAN NOT NULL DEFAULT FALSE," +
                 " " + FIELD_SELECTED + " BOOLEAN NOT NULL DEFAULT FALSE," +
                 " PRIMARY KEY (" + FIELD_ID + ") " +
                 " )";
         Statement stmt = connection.createStatement();
-        stmt.execute(sql);
+        stmt.executeUpdate(sql);
     }
 
     private boolean isPlayerInQuery(Connection connection, Player player) throws SQLException {
@@ -139,24 +186,28 @@ public class MatchQueryImpl implements MatchQuery {
     }
 
     private int insertPlayer(Connection connection, Player player, int defaultRange) throws SQLException {
-
-        String sql = "INSERT INTO " + TABLE_NAME + " " +
+        Timestamp beginTime = new Timestamp(lastUpdateTime);
+        String sql = "INSERT INTO " + TABLE_NAME +
                 " VALUES " +
-                " (?, ?, ?, CURRENT_TIMESTAMP())";
+                " (?, ?, ?, ?, ?, ?)";
         PreparedStatement stmt = connection.prepareStatement(sql);
         stmt.setLong(1, player.id);
         stmt.setInt(2, player.power);
         stmt.setInt(3, defaultRange);
+        stmt.setTimestamp(4, beginTime);
+        stmt.setBoolean(5, false);
+        stmt.setBoolean(6, false);
         return stmt.executeUpdate();
     }
 
-    private void updateRange(Connection connection, int rangeIncrease) throws SQLException {
+    private int updateRange(Connection connection, int rangeIncrease) throws SQLException {
         String sql = "UPDATE " + TABLE_NAME + " AS Q SET " +
                 FIELD_RANGE + " = (SELECT MIN(" + FIELD_RANGE +
                 ") FROM " + TABLE_NAME + " AS IQ " +
-                " WHERE IQ." + FIELD_ID + " = Q." + FIELD_ID + ") + 1";
+                " WHERE IQ." + FIELD_ID + " = Q." + FIELD_ID + ") + ?";
         PreparedStatement stmt = connection.prepareStatement(sql);
         stmt.setInt(1, rangeIncrease);
+        return stmt.executeUpdate();
     }
 
     private Player fetchPlayer(ResultSet rs) throws SQLException {

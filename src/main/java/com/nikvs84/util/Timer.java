@@ -2,7 +2,7 @@ package com.nikvs84.util;
 
 import com.nikvs84.matchmaking.MatchQuery;
 
-public class Timer implements Runnable {
+public class Timer extends Thread implements Runnable {
     private MatchQuery matchQuery;
     private long rangeIncreaseTime;
     private boolean isRunning;
@@ -11,7 +11,7 @@ public class Timer implements Runnable {
         this.matchQuery = matchQuery;
         this.rangeIncreaseTime = rangeIncreaseTime;
         this.isRunning = true;
-        Thread.currentThread().setDaemon(true);
+        setDaemon(true);
     }
 
     public MatchQuery getMatchQuery() {

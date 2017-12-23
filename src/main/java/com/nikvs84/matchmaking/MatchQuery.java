@@ -12,9 +12,17 @@ public interface MatchQuery {
 
     List<Player[]> getParties();
 
+    void setLastUpdateTime(long lastUpdateTime);
+
     void initQuery(int partySize, int defaultRange, int rangeIncrease, long matchingTime);
 
     void initQuery(Matchmaking matchmaking);
 
     Player[] getOutsiders();
+
+    /**
+     * Для отладки.
+     * @return список всех игроков в очереди.
+     */
+    List<Player> getAllPlayers();
 }
