@@ -36,16 +36,19 @@ public class App
                 @Override
                 public void onCancel(Player player) {
                     System.out.printf("callbacks.onCancel(%s)", player);
+                    System.out.println();
                 }
             };
-            Matchmaking matchmaking = new Matchmaking(callbacks, 2, 1, 1, 1000, 5);
+            Matchmaking matchmaking = new Matchmaking(callbacks, 2, 1, 1, 1800000, 3600000);
+            matchmaking.update(new Date().getTime());
             Timer timer = new Timer(matchmaking.getMatchQuery(), matchmaking.getRangeIncreaseTime());
             timer.start();
             System.out.println("Input: update, add, print or exit");
             boolean isRunning = true;
             while (isRunning) {
                 String line = reader.readLine();
-                switch (line.toLowerCase()) {
+                String[] cmd = line.split(" ");
+                switch (cmd[0].toLowerCase()) {
                     case "exit":
                         isRunning = false;
                         break;
@@ -53,14 +56,16 @@ public class App
                         matchmaking.update(new Date().getTime());
                         break;
                     case "add":
-                        System.out.println("Input player: id power");
-                        String playerValues = reader.readLine();
-                        Player player = parsePlayer(playerValues, " ");
+                        Player player = new Player(Integer.valueOf(cmd[1]), Integer.valueOf(cmd[2]));
                         matchmaking.addRequest(player);
                         break;
                     case "print":
                         List<Player> players = matchmaking.getMatchQuery().getAllPlayers();
                         printPlayers(players);
+                        break;
+                    case "cancel":
+                        Player cancelPlayer = new Player(Integer.valueOf(cmd[1]), 0);
+                        matchmaking.onCancel(cancelPlayer);
                         break;
                 }
             }
